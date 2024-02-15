@@ -6,11 +6,12 @@ output: html_document
 # Load the required R libraries
 ```{r}
 .libPaths(c('/home/rstudio-user/studies/lib/', .libPaths()))
-#install.packages("table1", lib = "/home/rstudio-user/studies/lib/")
+#install.packages("mappings", lib = "/home/rstudio-user/studies/lib/")
 library(table1)
 library(dplyr)
 library(lubridate)
 library(ggplot2)
+library(mappings)
 ```
 
 # Read the files extracted from the db
@@ -54,4 +55,93 @@ overall_population <- overall_population %>%
 print(paste0("We have a total of ", length(unique(overall_population$PATIENT_NUM)), " patients at this step on the analysis"))
 ```
 
+# Identify the patients with missing information and exlcude them. 
+```{r}
+# Create a clean dataset excluding rows with missing values
+overall_population_clean <- overall_population[ complete.cases( overall_population), ]
+
+print(paste0("We have a total of ", length(unique(overall_population_clean$PATIENT_NUM)), " patients at this step on the analysis"))
+```
+
+# Transform the values into meaningful categories
+
+## Age groups
+First we estimate the age with the date of first encounter and the birth year. 
+Then we categorize the age in 5 different groups. 
+```{r}
+overall_population_age <- overall_population_clean %>%
+  dplyr::mutate( birth_year = as.Date(sapply(strsplit( as.character(BIRTH_DATE), " "), "[", 1), format = "%Y-%m-%d"), 
+                 encounter_date = as.Date(sapply(strsplit( as.character(firstDate), " "), "[", 1), format = "%Y-%m-%d" )) %>%
+  dplyr::mutate( age = round(floor( as.numeric(as.Date(encounter_date, format = "%Y-%m-%d")) - as.numeric(as.Date(birth_year, format = "%Y-%m-%d")))/365.25)) %>%
+  dplyr::mutate( age_group = ifelse( age >= 18 & age < 25, "18-24", 
+                                     ifelse( age >= 25 & age < 35, "25-34", 
+                                             ifelse( age >= 35 & age < 45, "35-44", 
+                                                     ifelse( age >= 45 & age < 65, "45-64", 
+                                                             ifelse( age >= 45 & age < 65, "45-64", 
+                                                                     ifelse( age >= 65, "65+ over", "other")))) )))
+```
+
+## Categorization for: Race & Marital status & Sex & language
+```{r}
+overall_population_categorized <- overall_population_age %>%
+  dplyr::mutate( race = ifelse( RACE_CD == "DEM|RACE:01", "American Indian Alaskan Native",   
+          ifelse( RACE_CD == "DEM|RACE:02", "Asian",
+            ifelse( RACE_CD == "DEM|RACE:03", "Black African American",
+              ifelse( RACE_CD == "DEM|RACE:04", "Native Hawaiian or Other Pacific Islander",
+                  ifelse( RACE_CD == "DEM|RACE:05", "White",
+                    ifelse( RACE_CD == "DEM|RACE:06", "MultipleRace", "other"))))))) %>%
+  dplyr::mutate( hispanic = ifelse( HISPANIC_CD == "DEM|HISPANIC:Y", "YES",   
+                                    ifelse( HISPANIC_CD == "DEM|HISPANIC:N", "NO", "other"))) %>%
+  dplyr::mutate(maritalstatus = ifelse(MARITAL_STATUS_CD == "DEM|MARITAL:Single", "Single", 
+      ifelse(MARITAL_STATUS_CD == "DEM|MARITAL:Married", "Married",
+        ifelse(MARITAL_STATUS_CD == "DEM|MARITAL:Significant Other", "Significant Other",
+          ifelse(MARITAL_STATUS_CD == "DEM|MARITAL:Domestic Partner", "Significant Other",
+              ifelse(MARITAL_STATUS_CD == "DEM|MARITAL:Divorced", "Divorced",
+                 ifelse(MARITAL_STATUS_CD == "DEM|MARITAL:Separated", "Separated", 
+                    ifelse(MARITAL_STATUS_CD == "DEM|MARITAL:Widowed", "Widowed", "other")))))))) %>%
+  dplyr::mutate(sex = ifelse(SEX_CD == "DEM|SEX:F", "Female", 
+              ifelse(SEX_CD == "DEM|SEX:M", "Male", "other"))) %>%
+  dplyr::filter(sex != "other")  %>%
+  dplyr::mutate( language = ifelse( LANGUAGE_CD == "ENG",  "English", 
+                                ifelse( LANGUAGE_CD == "SPA", "Spanish", "other")))
+
+#remove potential NAs
+overall_population_categorized <- na.omit(overall_population_categorized)
+#save the table as backup
+save( overall_population_categorized, file = "/home/rstudio-user/studies/Research-Fellowship-jovita-murillo/overall_population_categorized.RData")
+```
+
+# Create a first version of table 1
+```{r}
+column_order <- mappings::mapping(c("pre-pandemic", "post_pandemic"))
+table1(~ age_group + sex + race + language + CURRENT_FPL_CD + hispanic + HOMELESS_CD + maritalstatus + 
+         RURAL_CD | column_order(pandemic_period), 
+       data = overall_population_categorized, caption = "Table 1. Housing instability before and after pandemic (with overall")
+```
+
+## Create a second version of the table adding the p-value
+```{r}
+# add p-value to the table
+pvalue <- function(x, ...) {
+  # Construct vectors of data y, and groups (strata) g
+  y <- unlist(x)
+  g <- factor(rep(1:length(x), times=sapply(x, length)))
+  if (is.numeric(y)) {
+    # For numeric variables, perform a standard 2-sample t-test
+    p <- t.test(y ~ g)$p.value
+  } else {
+    # For categorical variables, perform a chi-squared test of independence
+    p <- chisq.test(table(y, g))$p.value
+  }
+  # Format the p-value, using an HTML entity for the less-than sign.
+  # The initial empty string places the output on the line below the variable label.
+  
+  
+  c("", sub("<", "&lt;", format.pval(p, digits=3, eps=0.001)))
+}
+
+table1(~ age_group + sex + race + language + CURRENT_FPL_CD + hispanic + HOMELESS_CD + maritalstatus + 
+         RURAL_CD | column_order(pandemic_period), 
+       data = overall_population_categorized,  overall=F, extra.col=list(`P-value`=pvalue), caption = "Table 1. Housing instability before and after pandemic (with p-value")
+```
 
