@@ -1,0 +1,345 @@
+--- filtering the visit dimention by payor type to identify medicaid encounters
+ select * 
+ into S36.dbo.medicaid_encounters 
+ from FellowsSample.S36.VISIT_DIMENSION 
+ where PAYOR_TYPE_RESEARCH = 'Medicaid';
+
+--- get the number of patients
+ select count(distinct(patient_num)) from S36.dbo.medicaid_encounters;
+
+ -- filtering by the time of the visit to limit it to 2016 to 2022
+select *, year(start_date) as year_encounter 
+into S36.dbo.medicaid_encounters_period
+from S36.dbo.medicaid_encounters 
+where year(start_date) > 2015 and year(start_date) < 2023;
+
+--- get the number of patients
+select count(distinct(patient_num)) from S36.dbo.medicaid_encounters_period;
+
+-- identify in patient_dimension which are these patients
+select * 
+into S36.dbo.medicaid_patients
+from FellowsSample.S36.patient_dimension 
+where patient_num in ( select distinct( patient_num) from S36.dbo.medicaid_encounters_period); 
+
+--- get the number of patients
+select count(distinct(patient_num)) from S36.dbo.medicaid_patients;
+
+-- filter by birtyear to select only patients that were 18 or older in 2016
+select *
+into S36.dbo.medicaid_adult_patients
+from S36.dbo.medicaid_patients
+where year(birth_date) <= 1998;
+
+--- get the number of patients
+select count(distinct(patient_num)) from S36.dbo.medicaid_adult_patients;
+
+
+--- identify the house instability codes
+select  * 
+into #housing_concept_cd 
+from FellowsSample.common.CONCEPT_DIMENSION where CONCEPT_PATH like '\i2b2\SDH\Housing Instability%';
+
+-- identify the patients that have a 1 in some of these concepts 
+select *
+into S36.dbo.observation_Fact_housing_instability
+from FellowsSample.S36.OBSERVATION_FACT
+where CONCEPT_CD in ( select concept_cd from #housing_concept_cd) and QUANTITY_NUM = 1;
+
+--- get the number of patients
+select count(distinct( patient_num) ) from S36.dbo.observation_Fact_housing_instability;
+
+-- filter by the medicaid encounters
+select * 
+into S36.dbo.obs_housing_medicaid
+from S36.dbo.observation_Fact_housing_instability
+where ENCOUNTER_NUM in ( select distincT(ENCOUNTER_NUM) from S36.dbo.medicaid_encounters_period);
+
+--- get the number of patients
+select count(distinct(patient_num)) from S36.dbo.obs_housing_medicaid;
+
+-- filter by patients on our age group
+select * 
+into S36.dbo.obs_housing_medicaid_adults
+from S36.dbo.obs_housing_medicaid
+where patient_num in ( select patient_num from S36.dbo.medicaid_adult_patients);
+
+--- get the number of patients
+select count(distinct(patient_num)) from S36.dbo.obs_housing_medicaid_adults;
+
+-- select columns of interest
+select encounter_num, patient_num, concept_cd, start_date, quantity_num, year(start_date) as year_concept
+into S36.dbo.obs_housing_medicaid_adults_subsetColumns
+from S36.dbo.obs_housing_medicaid_adults;
+
+-- do a subset of patient dimension for these patients separating pre_pandemic and post_pandemic and the overall one
+select *
+into S36.dbo.overall_population
+from S36.dbo.medicaid_adult_patients 
+where patient_num in (select distincT( PATIENT_NUM) from S36.dbo.obs_housing_medicaid_adults_subsetColumns);
+
+select *
+into S36.dbo.pre_pandemic_population
+from S36.dbo.medicaid_adult_patients 
+where patient_num in (select distincT( PATIENT_NUM) from S36.dbo.obs_housing_medicaid_adults_subsetColumns where year_concept < 2020);
+
+select *
+into S36.dbo.post_pandemic_population
+from S36.dbo.medicaid_adult_patients 
+where patient_num in (select distincT( PATIENT_NUM) from S36.dbo.obs_housing_medicaid_adults_subsetColumns where year_concept >= 2020);
+
+select count(distinct(patient_num)) from S36.dbo.pre_pandemic_population;
+select count(distinct(patient_num)) from S36.dbo.post_pandemic_population;
+select count(distinct(patient_num)) from S36.dbo.overall_population;
+
+select count(distinct(patient_num)) 
+from S36.dbo.pre_pandemic_population
+where patient_num in (select patient_num from S36.dbo.post_pandemic_population);
+
+select top 10 * from S36.dbo.overall_population;
+
+select CURRENT_FPL_CD, count(distinct(patient_num)) as counts
+from S36.dbo.overall_population
+group by CURRENT_FPL_CD;
+
+select LANGUAGE_CD, count(distinct(patient_num)) as counts
+from S36.dbo.overall_population
+group by LANGUAGE_CD order  by counts desc;
+
+select HISPANIC_CD, count(distinct(patient_num)) as counts
+from S36.dbo.overall_population
+group by HISPANIC_CD order  by counts desc;
+-- 
+select top 100 * from MyPivot
+
+ select top 10 * from FellowsSample.common.I2B2
+
+  select top 10 * from FellowsSample.S36.patient_dimension
+
+  select * 
+  into #subset_patient_dimension
+  from  FellowsSample.S36.patient_dimension 
+  where patient_num in ( select patient_num from MyPivot);
+
+  select * from #subset_patient_dimension ;
+
+  select top 10 * from FellowsSample.S36.observation_fact;
+ select top 10 * from FellowsSample.S36.VISIT_DIMENSION;
+
+ ---Z codes---
+ drop table s36.dbo.icdHousing;
+
+ select *
+into s36.dbo.icdHousing
+from FellowsSample.S36.observation_fact
+where concept_cd like 'ICD10CM:Z59%';
+
+select top 10 * from s36.dbo.icdHousing; 
+
+select count(distinct(patient_num)), concept_cd from s36.dbo.icdHousing
+group by concept_cd order by concept_cd;
+
+select count(distinct(patient_num)), year(start_date) as year_diag from s36.dbo.icdHousing
+group by year(start_date) order by year_diag;
+
+
+--- payor type
+select  count(distinct(patient_num)), PAYOR_TYPE_RESEARCH
+ from FellowsSample.S36.VISIT_DIMENSION 
+ group by PAYOR_TYPE_RESEARCH;
+
+select count(distinct(patient_num)) from s36.dbo.icdHousing where patient_num in (select patient_num from s36.dbo.overall_population);
+
+select top 10 * from s36.dbo.overall_population;
+
+into s36.dbo.icdHousing
+from observation_Fact
+where patient_num in (select patient_num from ourTableOfpatients) and concept_cd in ('ICD10:59.1')
+
+
+
+
+ -- filter visit_dimension by payor_type_research to identify the medicaid encounters
+
+ select * 
+ into #medicaid_encounters 
+ from FellowsSample.S36.VISIT_DIMENSION 
+ where PAYOR_TYPE_RESEARCH = 'Medicaid' and 
+ patient_num in ( select patient_num from MyPivot);
+
+ -- from all the observation table we filter by encounter num that is on our medicaid subset table
+ select *
+ into #subset_observation_FACT
+ FROM FellowsSample.S36.OBSERVATION_FACT
+ where ENCOUNTER_NUM in ( select ENCOUNTER_NUM from #medicaid_encounters );
+
+ select top 10 * from #subset_observation_FACT
+
+ ---filter by housing instability concept
+select  * 
+into #housing_concept_cd 
+from FellowsSample.common.CONCEPT_DIMENSION where CONCEPT_PATH like '\i2b2\SDH\Housing Instability%';
+
+select * 
+into #subset_observation_Fact_housingINSTABILITY 
+FROM #subset_observation_FACT 
+where CONCEPT_CD in ( select concept_cd from #housing_concept_cd); 
+
+select count(distinct( patient_num)) from #subset_observation_Fact_housingINSTABILITY;
+
+select * from #subset_observation_Fact_housingINSTABILITY;
+
+select top 10 * from FellowsSample.S36.PATIENT_DIMENSION; 
+
+select top 10 * from FellowsSample.common.I2B2 where C_BASECODE in (select concept_cd from #housing_concept_cd);
+
+
+select * from #housing_concept_cd where concept_cd = 'SDH:ADV0097'; 
+
+select * from #subset_observation_Fact_housingINSTABILITY where concept_cd = 'SDH:ADV0097'; 
+
+----- December 18th
+--- filtering the visit dimention by payor type to identify medicaid encounters
+ select * 
+ into S36.dbo.medicaid_encounters 
+ from FellowsSample.S36.VISIT_DIMENSION 
+ where PAYOR_TYPE_RESEARCH = 'Medicaid';
+
+ select count(distinct(patient_num)) from S36.dbo.medicaid_encounters;
+
+ -- filtering by the time of the visit to limit it to 2016 to 2022
+select *, year(start_date) as year_encounter 
+into S36.dbo.medicaid_encounters_period
+from S36.dbo.medicaid_encounters 
+where year(start_date) > 2015 and year(start_date) < 2023;
+
+select count(distinct(patient_num)) from S36.dbo.medicaid_encounters_period;
+
+-- identify in patient_dimension which are these patients
+select * 
+into S36.dbo.medicaid_patients
+from FellowsSample.S36.patient_dimension 
+where patient_num in ( select distinct( patient_num) from S36.dbo.medicaid_encounters_period); 
+
+select count(distinct(patient_num)) from S36.dbo.medicaid_patients;
+
+
+-- filter by birtyear to select only patients that were 18 or older in 2016
+select *
+into S36.dbo.medicaid_adult_patients
+from S36.dbo.medicaid_patients
+where year(birth_date) <= 1998;
+
+select count(distinct(patient_num)) from S36.dbo.medicaid_adult_patients;
+
+selecT PATIENT_NUM, BIRTH_DATE, 1998 - YEAR(BIRTH_DATE) AS AGE
+into #checkage
+from S36.dbo.medicaid_adult_patients;
+
+SELECT age, COUNT(DISTINCT( PATIENT_NUM))
+FROM #checkage
+GROUP BY age
+order by age;
+
+
+ --- identify the house instability codes
+select * from #housing_concept_cd;
+
+-- identify the patients that have a 1 in some of these concepts 
+select *
+into S36.dbo.observation_Fact_housing_instability
+from FellowsSample.S36.OBSERVATION_FACT
+where CONCEPT_CD in ( select concept_cd from #housing_concept_cd) and QUANTITY_NUM = 1;
+
+select count(distinct( patient_num) ) from S36.dbo.observation_Fact_housing_instability;
+
+-- filter by the medicaid encounters
+select * 
+into S36.dbo.obs_housing_medicaid
+from S36.dbo.observation_Fact_housing_instability
+where ENCOUNTER_NUM in ( select distincT(ENCOUNTER_NUM) from S36.dbo.medicaid_encounters_period);
+
+select count(distinct(patient_num)) from S36.dbo.obs_housing_medicaid;
+
+-- filter by patients on our age group
+select * 
+into S36.dbo.obs_housing_medicaid_adults
+from S36.dbo.obs_housing_medicaid
+where patient_num in ( select patient_num from S36.dbo.medicaid_adult_patients);
+
+select count(distinct(patient_num)) from S36.dbo.obs_housing_medicaid_adults;
+
+-- select columns of interest and add a column with pre or post pandemic label
+select encounter_num, patient_num, concept_cd, start_date, quantity_num, year(start_date) as year_concept
+into S36.dbo.obs_housing_medicaid_adults_subsetColumns
+from S36.dbo.obs_housing_medicaid_adults;
+
+-- do a subset of patient dimension for these patients separating pre_pandemic and post_pandemic and the overall one
+select *
+into S36.dbo.overall_population
+from S36.dbo.medicaid_adult_patients 
+where patient_num in (select distincT( PATIENT_NUM) from S36.dbo.obs_housing_medicaid_adults_subsetColumns);
+
+select *
+into S36.dbo.pre_pandemic_population
+from S36.dbo.medicaid_adult_patients 
+where patient_num in (select distincT( PATIENT_NUM) from S36.dbo.obs_housing_medicaid_adults_subsetColumns where year_concept < 2020);
+
+select *
+into S36.dbo.post_pandemic_population
+from S36.dbo.medicaid_adult_patients 
+where patient_num in (select distincT( PATIENT_NUM) from S36.dbo.obs_housing_medicaid_adults_subsetColumns where year_concept >= 2020);
+
+select count(distinct(patient_num)) from S36.dbo.pre_pandemic_population;
+select count(distinct(patient_num)) from S36.dbo.post_pandemic_population;
+select count(distinct(patient_num)) from S36.dbo.overall_population;
+
+select count(distinct(patient_num)) 
+from S36.dbo.pre_pandemic_population
+where patient_num in (select patient_num from S36.dbo.post_pandemic_population);
+
+select top 10 * from S36.dbo.overall_population;
+
+select CURRENT_FPL_CD, count(distinct(patient_num)) as counts
+from S36.dbo.overall_population
+group by CURRENT_FPL_CD;
+
+select LANGUAGE_CD, count(distinct(patient_num)) as counts
+from S36.dbo.overall_population
+group by LANGUAGE_CD order  by counts desc;
+
+select HISPANIC_CD, count(distinct(patient_num)) as counts
+from S36.dbo.overall_population
+group by HISPANIC_CD order  by counts desc;
+
+---- 
+select top 10 * from s36.dbo.obs_housing_medicaid;
+select distinct( concept_cd) from s36.dbo.obs_housing_medicaid;
+
+drop table  s36.dbo.housing_concept_cd;
+
+select * 
+into s36.dbo.housing_concept_cd
+from FellowsSample.common.CONCEPT_DIMENSION where CONCEPT_PATH like '\i2b2\SDH\Housing Instability%';
+
+select * from s36.dbo.housing_concept_cd
+
+select * 
+into S36.dbo.obs_fact_housingInstability
+from FellowsSample.s36.OBSERVATION_FACT 
+where concept_cd in (select concept_cd from s36.dbo.housing_concept_cd);
+
+select top 10 * from s36.dbo.obs_fact_housingInstability;
+
+select a.ENCOUNTER_NUM, a.patient_num, a.concept_cd,a.start_date, b.PAYOR_TYPE_RESEARCH
+into s36.dbo.all_insurance_housingInstability 
+from S36.dbo.obs_fact_housingInstability a
+inner join FellowsSample.S36.VISIT_DIMENSION b 
+on a.ENCOUNTER_NUM = b.ENCOUNTER_NUM;
+
+select top 10 * from S36.dbo.all_insurance_housingInstability;
+
+select * 
+into S36.dbo.all_insurance_hi_patients
+from FellowsSample.S36.PATIENT_DIMENSION
+where patient_num in (select distinct(patient_num) from S36.dbo.all_insurance_housingInstability);

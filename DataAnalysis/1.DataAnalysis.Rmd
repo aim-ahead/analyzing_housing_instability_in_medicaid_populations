@@ -1,0 +1,57 @@
+---
+title: "Data Analysis"
+output: html_document
+---
+
+# Load the required R libraries
+```{r}
+.libPaths(c('/home/rstudio-user/studies/lib/', .libPaths()))
+#install.packages("table1", lib = "/home/rstudio-user/studies/lib/")
+library(table1)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+```
+
+# Read the files extracted from the db
+These files are exports from the tables:
+- overall_population
+- pre_pandemic_population
+- post_pandemic_population
+(See details on file 0.SQL queries)
+
+The inclusion criteria has been:
+- patients with a concept of housing instability
+- older than 18 years old
+- in medicaid
+- time period: 2016 to 2022
+```{r}
+overall_population <- read.delim("overall_population.txt", header = TRUE, sep = ",")
+prePandemic_population <- read.delim("pre_pan_feb20.txt", header = TRUE, sep = ",")
+postPandemic_population <- read.delim("post_pan_march20.txt", header = TRUE, sep = ",")
+```
+
+# Read the file with the encounter dates
+```{r}
+encounters <- read.delim("encounter_minDate.txt", header = TRUE, sep = ",")
+```
+
+# Exclude the patients that are in both periods
+```{r}
+# first we identify which are the patients in both periods
+common <- prePandemic_population[ prePandemic_population$PATIENT_NUM %in% postPandemic_population$PATIENT_NUM,  "PATIENT_NUM"]
+
+print(paste0("We are excluding ", length(common), " patients at this step on the analysis"))
+
+# then we remove them from the overal population using the filter
+# we create a new column with the flag, pre or post pandemic for each patient
+# finallly, with the lef_join we add the encouter numbers with the dates
+overall_population <- overall_population %>%
+  dplyr::filter( ! PATIENT_NUM %in% common ) %>%
+  dplyr::mutate( pandemic_period = ifelse(PATIENT_NUM %in% prePandemic_population$PATIENT_NUM, "pre-pandemic", "post_pandemic")) %>%
+  dplyr::left_join( encounters, by = "PATIENT_NUM")
+
+print(paste0("We have a total of ", length(unique(overall_population$PATIENT_NUM)), " patients at this step on the analysis"))
+```
+
+

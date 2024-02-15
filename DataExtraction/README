@@ -1,0 +1,7 @@
+This folder contains the SQL queries to:
+	1) identify the patients of interest, meeting the inclusion criteria:
+		- older adults (>18 y/o)
+		- from 2016-2020
+		- housing instability
+
+	2) create tables for analysis at different levels of groups/aggregation
