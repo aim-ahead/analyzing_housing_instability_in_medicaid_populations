@@ -1,0 +1,135 @@
+---
+title: "Overall population characteristics by payor type: table"
+output: html_document
+---
+
+# Load the required R libraries
+```{r}
+.libPaths(c('/home/rstudio-user/studies/lib/', .libPaths()))
+#install.packages("mappings", lib = "/home/rstudio-user/studies/lib/")
+library(table1)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(mappings)
+```
+
+# Read the files extracted from the db
+These files are exports from the tables:
+- f1_all_payors_housingInstability_encounter_rownum414458.txt
+(See details on file dataExtraction_SQLqueries_table2_allPayors_sdh.sql)
+
+The inclusion criteria has been:
+- patients that experienced housing insecurity (SDH concepts)
+- older than 18 years old
+- time period: 2016 to 2022
+```{r}
+sdh_encounters <- read.delim("reviewSQLoutputs/f1_all_payors_housingInstability_encounter_rownum414458.txt", header = TRUE, sep = ",")
+sdh_demographics <- read.delim("reviewSQLoutputs/f1_all_payors_housingInstability_demographics_rownum122212.txt", header = TRUE, sep = ",")
+```
+
+# Check how many type of payers each patient had
+```{r}
+checks <- sdh_encounters %>%
+  dplyr::group_by( patient_num ) %>%
+  dplyr::summarise( payor_types = n_distinct( PAYOR_TYPE_RESEARCH ))
+
+summary(as.factor( checks$payor_types))
+```
+
+We select only those patients with 1 payor type for simplification. 
+We also select the first date of the encounter to estimate the age. 
+```{r}
+checks_1type <- checks %>%
+  filter( payor_types == 1)
+
+sdh_encounters_filtered <- sdh_encounters %>%
+  dplyr::filter( patient_num %in% checks_1type$patient_num ) %>%
+  dplyr::mutate( date = sapply(strsplit( as.character(start_date), " "), '[', 1)) %>%
+  dplyr::group_by( patient_num, PAYOR_TYPE_RESEARCH ) %>%
+  dplyr::summarise( min_date = min(as.Date(date, format = "%Y-%m-%d")))
+```
+
+# Add demographics information
+```{r}
+# filter out the patients with more than one payor type
+sdh_demographics_filtered <- sdh_demographics %>%
+  dplyr::filter( PATIENT_NUM %in% sdh_encounters_filtered$patient_num )
+
+# rename the columns as lower case
+colnames( sdh_demographics_filtered ) <- tolower( colnames( sdh_demographics_filtered ))
+
+# merge both files to get the min date and the payor type
+all_patients_info <- sdh_demographics_filtered %>%
+  dplyr::left_join( sdh_encounters_filtered, by="patient_num")
+```
+
+
+# Recode different columns into meaningful categories
+
+## Age groups
+First we estimate the age with the date of first encounter and the birth year. 
+Then we categorize the age in 5 different groups. 
+```{r}
+all_patients_info_age <- all_patients_info %>%
+  dplyr::mutate( birth_year = as.Date(sapply(strsplit( as.character(birth_date), " "), "[", 1), format = "%Y-%m-%d")) %>%
+  dplyr::mutate( age = round(floor( as.numeric(as.Date(min_date, format = "%Y-%m-%d")) - as.numeric(as.Date(birth_year, format = "%Y-%m-%d")))/365.25)) %>%
+  dplyr::mutate( age_group = ifelse( age >= 18 & age < 25, "18-24", 
+                                     ifelse( age >= 25 & age < 35, "25-34", 
+                                             ifelse( age >= 35 & age < 45, "35-44", 
+                                                     ifelse( age >= 45 & age < 65, "45-64", 
+                                                             ifelse( age >= 45 & age < 65, "45-64", 
+                                                                     ifelse( age >= 65, "65+ over", "other")))) )))
+```
+
+## Recode for: Race & Marital status & Sex & language
+In this step we recode the variables and we also filter out the patients with "other" for gender, due to the low values (<10), for privacy reasons. 
+
+```{r}
+all_patients_info_categorized <- all_patients_info_age %>%
+  dplyr::mutate( race = ifelse( race_cd == "DEM|RACE:01", "American Indian Alaskan Native",   
+          ifelse( race_cd == "DEM|RACE:02", "Asian",
+            ifelse( race_cd == "DEM|RACE:03", "Black African American",
+              ifelse( race_cd == "DEM|RACE:04", "Native Hawaiian or Other Pacific Islander",
+                  ifelse( race_cd == "DEM|RACE:05", "White",
+                    ifelse( race_cd == "DEM|RACE:06", "MultipleRace", "other"))))))) %>%
+  dplyr::mutate( hispanic = ifelse( hispanic_cd == "DEM|HISPANIC:Y", "YES",   
+                                    ifelse( hispanic_cd == "DEM|HISPANIC:N", "NO", "other"))) %>%
+  dplyr::mutate(maritalstatus = ifelse(marital_status_cd == "DEM|MARITAL:Single", "Single", 
+      ifelse(marital_status_cd == "DEM|MARITAL:Married", "Married",
+        ifelse(marital_status_cd == "DEM|MARITAL:Significant Other", "Significant Other",
+          ifelse(marital_status_cd == "DEM|MARITAL:Domestic Partner", "Significant Other",
+              ifelse(marital_status_cd == "DEM|MARITAL:Divorced", "Divorced",
+                 ifelse(marital_status_cd == "DEM|MARITAL:Separated", "Separated", 
+                    ifelse(marital_status_cd == "DEM|MARITAL:Widowed", "Widowed", "other")))))))) %>%
+  dplyr::mutate(sex = ifelse(sex_cd == "DEM|SEX:F", "Female", 
+              ifelse(sex_cd == "DEM|SEX:M", "Male", "other"))) %>%
+  dplyr::filter(sex != "other")  %>%
+  dplyr::mutate( language = ifelse( language_cd == "ENG",  "English", 
+                                ifelse( language_cd == "SPA", "Spanish", "other")))
+```
+
+We create an extrac column that contains both, the ethnicity (hispanic: yes/no and the race)
+```{r}
+all_patients_info_categorized <- all_patients_info_categorized %>%
+  dplyr::mutate( eth_race = paste0( ifelse( hispanic == "YES", "hispanic", ifelse(hispanic== "NO", "Non-Hispanic", "Other")), " ", race ))
+```
+
+We check again for missing values and we save the recoded and clean data to create table 1. 
+```{r}
+#remove potential NAs
+all_patients_info_categorized <- na.omit(all_patients_info_categorized)
+#save the table as backup
+save( all_patients_info_categorized, file = "/home/rstudio-user/studies/Research-Fellowship-jovita-murillo/all_patients_info_categorized.RData")
+```
+
+# Create a first version of table 1
+```{r}
+allPopTable <- table1(~ age_group + sex + hispanic + race + eth_race + language + current_fpl_cd + homeless_cd + maritalstatus + 
+         rural_cd | PAYOR_TYPE_RESEARCH, 
+       data = all_patients_info_categorized, caption = "Table X. Patients with housing insecurity: description by payor type")
+
+write.table(allPopTable, file= "outputs/allPopTable.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
+
+```
+
