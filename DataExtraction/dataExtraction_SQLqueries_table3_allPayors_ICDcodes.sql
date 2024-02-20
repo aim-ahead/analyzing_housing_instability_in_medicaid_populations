@@ -7,12 +7,12 @@
 
 ---- note that intermediate table names start with r1 while final tables to be exported start with f1
 
---- identify the ICD codes for housing 
+--- identify the ICD codes for housing in concept dimension (dictionary)
+select concept_cd, name_char 
+into S36.dbo.r1_icdZ59codes
+from FellowsSample.common.CONCEPT_DIMENSION
+where concept_cd like 'ICD10CM:Z59%'
 
-select *
-into s36.dbo.r1_icdHousing
-from FellowsSample.S36.observation_fact
-where concept_cd like 'ICD10CM:Z59%';
 
 
 --- first we create a table with all the patients with an ICD Z code of housing instability
@@ -20,7 +20,7 @@ where concept_cd like 'ICD10CM:Z59%';
 select * 
 into S36.dbo.r1_obs_fact_ICD_housingInstability
 from FellowsSample.s36.OBSERVATION_FACT 
-where concept_cd in (select concept_cd from s36.dbo.r1_icdHousing);
+where concept_cd in (select concept_cd from s36.dbo.r1_icdZ59codes);
 
 --- then we merge this information with the data in visit dimension
 --- to add the payor type for each encounter
