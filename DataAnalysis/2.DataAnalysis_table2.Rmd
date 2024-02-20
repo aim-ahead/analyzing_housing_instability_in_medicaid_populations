@@ -1,5 +1,5 @@
 ---
-title: "Housing Instability in all patients: table 2"
+title: "Housing Instability overtime"
 output: html_document
 ---
 
@@ -12,4 +12,120 @@ library(dplyr)
 library(lubridate)
 library(ggplot2)
 library(mappings)
+library(viridis)
+```
+
+# Read the files extracted from the db
+These files are exports from the tables:
+- f1_all_payors_housingInstabilityZcodes
+- f1_all_payors_housingInstability_encounter_rownum414458.txt
+(See details on file dataExtraction_SQLqueries_table2_allPayors_sdh.sql)
+
+The inclusion criteria has been:
+- patients that experienced housing insecurity (SDH concepts)
+- older than 18 years old
+- time period: 2016 to 2021
+```{r}
+sdh_info <- read.delim("reviewSQLoutputs/f1_all_payors_housingInstability_encounter_rownum414458.txt", header = TRUE, sep = ",")
+zcodes_info <- read.delim("reviewSQLoutputs/f1_all_payors_housingInstability_Zcodes_encounter_rownum4914.txt", header = TRUE, sep = ",")
+```
+
+# Format the data for analysis
+First we identify which encounters are reported as both, SDH and ICD and which ones not. 
+```{r}
+common <- sdh_info[ sdh_info$ENCOUNTER_NUM %in% zcodes_info$ENCOUNTER_NUM, "ENCOUNTER_NUM"]
+sdh_info <- sdh_info %>%
+  dplyr::mutate( source = ifelse( ENCOUNTER_NUM %in% common, "SDH and ICD", "SDH"))
+zcodes_info <- zcodes_info %>%
+  dplyr::mutate( source = ifelse( ENCOUNTER_NUM %in% common, "SDH and ICD", "ICD"))
+```
+
+We combine both tables into one and extract the year. 
+```{r}
+all_info <- rbind( sdh_info, zcodes_info)
+# we remove the two original data frames to avoid confusion
+rm(sdh_info, zcodes_info)
+
+# extract the year from the start date
+all_info <- all_info %>%
+  dplyr::mutate(year =as.numeric(sapply(strsplit( as.character(start_date), "[-]"), '[', 1)))
+```
+
+# Estimate total number of patients per year and payor type
+We do in two different ways:
+- overall
+- distinguishing by source of knowledge (SDH or ICD)
+```{r}
+overall_counts <- all_info %>%
+  dplyr::group_by( year, PAYOR_TYPE_RESEARCH ) %>%
+  dplyr::summarise( pat_count = n_distinct( patient_num )) %>%
+  dplyr::ungroup() %>%
+  dplyr::group_by( year ) %>%
+  dplyr::mutate( total = sum(pat_count), 
+                 perc  = round(100*pat_count/total, 2))
+
+by_source_counts <- all_info %>%
+  dplyr::group_by( source, year, PAYOR_TYPE_RESEARCH ) %>%
+  dplyr::summarise( pat_count = n_distinct( patient_num )) %>%
+  dplyr::ungroup() %>%
+  dplyr::group_by( year, PAYOR_TYPE_RESEARCH ) %>%
+  dplyr::mutate( total = sum(pat_count), 
+                 perc  = round(100*pat_count/total, 2))
+
+```
+
+# Visualizations of percentage of patients per payor type
+```{r}
+ggplot(overall_counts, aes(fill=PAYOR_TYPE_RESEARCH, y=perc, x=as.factor(year))) + 
+  ggplot2::geom_bar(position="stack", stat="identity") +
+  viridis::scale_fill_viridis(discrete = T) +
+  ggplot2::ggtitle("Percentage of patients with housing insecurity \n (by payor type and year)") +
+  xlab("") +
+  ylab("percentage of patients")+
+  guides(fill=guide_legend(title="Payor Type"))+
+  ggplot2::theme_bw( ) +
+  ggplot2::theme(panel.grid.major.x = element_blank(), 
+                 axis.text.x = element_text(vjust = 1,hjust=1), 
+                 plot.title = element_text(hjust = 0.5))
+```
+
+# Visualizations of % of social insecurity by source of knowledge in Medicaid population
+```{r}
+by_source_counts %>% 
+  dplyr::filter( PAYOR_TYPE_RESEARCH == "Medicaid") %>%
+  ggplot2::ggplot( aes(fill=source, y=perc, x=as.factor(year))) + 
+  ggplot2::geom_bar(position="stack", stat="identity") +
+  ggplot2::scale_fill_brewer(palette = "Pastel1")+
+  ggplot2::ggtitle("Source of knowledge for social insecurity") +
+  xlab("") +
+  ylab("percentage of patients")+
+  guides(fill=guide_legend(title="Source of Knowledge"))+
+  ggplot2::theme_bw( ) +
+  ggplot2::theme(panel.grid.major.x = element_blank(), 
+                 axis.text.x = element_text(vjust = 1,hjust=1), 
+                 plot.title = element_text(hjust = 0.5))
+```
+
+# Percentage of housing instability over time for medicaid population
+
+```{r}
+totalPatientsPerYearAndPayor <- read.delim("reviewSQLoutputs/f1_dbpatients_per_year_and_payor.txt", header = TRUE, sep = ",") %>%
+  dplyr::filter( payor_type == "Medicaid" ) %>%
+  dplyr::select( total_count = pat_count, year = per_year )
+
+perc_over_total_medicaid_pop <- overall_counts %>%
+  dplyr::filter( PAYOR_TYPE_RESEARCH == "Medicaid") %>%
+  dplyr::select( year, pat_count ) %>%
+  dplyr::left_join( totalPatientsPerYearAndPayor) %>%
+  dplyr::mutate( perc = round(pat_count/total_count*100, 2))
+  
+ggplot2::ggplot(data = perc_over_total_medicaid_pop,  aes( y=perc, x=as.factor(year))) + 
+  ggplot2::geom_bar(fill = "#90c6d6", stat = "identity") +
+  ggplot2::ggtitle("Percentage of patients with social insecurity among the Medicaid population") +
+  xlab("") +
+  ylab("percentage of patients")+
+  ggplot2::theme_bw( ) +
+  ggplot2::theme(panel.grid.major.x = element_blank(), 
+                 axis.text.x = element_text(vjust = 1,hjust=1), 
+                 plot.title = element_text(hjust = 0.5))
 ```
