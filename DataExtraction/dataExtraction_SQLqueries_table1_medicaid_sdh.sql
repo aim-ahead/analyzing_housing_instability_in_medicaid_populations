@@ -82,3 +82,24 @@ select *
 into S36.dbo.f1_post_pandemic_population_rownum11558
 from S36.dbo.r1_medicaid_adult_patients 
 where patient_num in (select distinct( PATIENT_NUM) from S36.dbo.r1_observation_housing_medicaid_adults where  year(start_date) >= 2020);
+
+---- get the overall number of adult patients per year on the database
+
+select * 
+into s36.dbo.r1_all_adults
+from FellowsSample.S36.patient_dimension 
+where  year(birth_date) <= 1998;
+
+select count(distinct( patient_num)) as pat_count, year(start_date) as per_year
+into S36.dbo.f1_dbpatients_per_year
+from FellowsSample.S36.visit_dimension
+where ( year(start_date) > 2015 and year(start_date) < 2023)
+and patient_num in ( select patient_num from s36.dbo.r1_all_adults)
+group by  year(start_date); 
+
+select count(distinct( patient_num)) as pat_count, year(start_date) as per_year, PAYOR_TYPE_RESEARCH as payor_type
+into S36.dbo.f1_dbpatients_per_year_and_payor
+from FellowsSample.S36.visit_dimension
+where ( year(start_date) > 2015 and year(start_date) < 2023)
+and patient_num in ( select patient_num from s36.dbo.r1_all_adults)
+group by  year(start_date), PAYOR_TYPE_RESEARCH; 
