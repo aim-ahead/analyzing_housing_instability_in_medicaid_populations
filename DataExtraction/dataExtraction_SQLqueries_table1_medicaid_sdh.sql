@@ -62,6 +62,7 @@ and encounter_num in (select distinct(encounter_num) from S36.dbo.r1_medicaid_en
 select patient_num, min(start_date) as firstDate
 into S36.dbo.f1_first_encounter_date
 from S36.dbo.r1_medicaid_encounters_period_adults
+where encounter_num in (select encounter_num from S36.dbo.r1_observation_housing_medicaid_adults) 
 group by patient_num; 
 
 
