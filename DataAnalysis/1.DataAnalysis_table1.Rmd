@@ -1,5 +1,5 @@
 ---
-title: "Data Analysis"
+title: "Housing Instability in Medicaid patients: table 1"
 output: html_document
 ---
 
@@ -16,46 +16,52 @@ library(mappings)
 
 # Read the files extracted from the db
 These files are exports from the tables:
-- overall_population
-- pre_pandemic_population
-- post_pandemic_population
-(See details on file 0.SQL queries)
+- f1_overall_population_rownum21816
+- f1_pre_pandemic_population_rownum11100
+- f1_post_pandemic_population_rownum11558
+(See details on file dataExtraction_SQLqueries_table1_medicaid_sdh.sql)
 
 The inclusion criteria has been:
-- patients with a concept of housing instability
+- patients that experienced housing insecurity (SDH concepts)
 - older than 18 years old
 - in medicaid
 - time period: 2016 to 2022
 ```{r}
-overall_population <- read.delim("overall_population.txt", header = TRUE, sep = ",")
-prePandemic_population <- read.delim("pre_pan_feb20.txt", header = TRUE, sep = ",")
-postPandemic_population <- read.delim("post_pan_march20.txt", header = TRUE, sep = ",")
+overall_population <- read.delim("reviewSQLoutputs/f1_overall_population_rownum21816.txt", header = TRUE, sep = ",")
+prePandemic_population <- read.delim("reviewSQLoutputs/f1_pre_pandemic_population_rownum11100.txt", header = TRUE, sep = ",")
+postPandemic_population <- read.delim("reviewSQLoutputs/f1_post_pandemic_population_rownum11558.txt", header = TRUE, sep = ",")
 ```
 
 # Read the file with the encounter dates
+This file contains the first date that a patient had housing insecurity in the study period. 
+This will be used to estimate the age of the patients. 
 ```{r}
-encounters <- read.delim("encounter_minDate.txt", header = TRUE, sep = ",")
+encounters <- read.delim("reviewSQLoutputs/f1_first_encounter_date.txt", header = TRUE, sep = ",")
+colnames(encounters)[1] <- "PATIENT_NUM"
 ```
 
 # Exclude the patients that are in both periods
+We identify common patients in both periods and filter them out of the dataset. 
+
 ```{r}
 # first we identify which are the patients in both periods
 common <- prePandemic_population[ prePandemic_population$PATIENT_NUM %in% postPandemic_population$PATIENT_NUM,  "PATIENT_NUM"]
 
 print(paste0("We are excluding ", length(common), " patients at this step on the analysis"))
 
-# then we remove them from the overal population using the filter
+# then we remove them from the overall population using the filter
 # we create a new column with the flag, pre or post pandemic for each patient
-# finallly, with the lef_join we add the encouter numbers with the dates
+# finally, with the lef_join we add the encounter numbers with the dates
 overall_population <- overall_population %>%
   dplyr::filter( ! PATIENT_NUM %in% common ) %>%
-  dplyr::mutate( pandemic_period = ifelse(PATIENT_NUM %in% prePandemic_population$PATIENT_NUM, "pre-pandemic", "post_pandemic")) %>%
+  dplyr::mutate( pandemic_period = ifelse(PATIENT_NUM %in% prePandemic_population$PATIENT_NUM, "pre-pandemic", "post-pandemic")) %>%
   dplyr::left_join( encounters, by = "PATIENT_NUM")
 
 print(paste0("We have a total of ", length(unique(overall_population$PATIENT_NUM)), " patients at this step on the analysis"))
 ```
 
 # Identify the patients with missing information and exlcude them. 
+Create a clean dataset excluding rows with missing values
 ```{r}
 # Create a clean dataset excluding rows with missing values
 overall_population_clean <- overall_population[ complete.cases( overall_population), ]
@@ -63,7 +69,7 @@ overall_population_clean <- overall_population[ complete.cases( overall_populati
 print(paste0("We have a total of ", length(unique(overall_population_clean$PATIENT_NUM)), " patients at this step on the analysis"))
 ```
 
-# Transform the values into meaningful categories
+# Recode different columns into meaningful categories
 
 ## Age groups
 First we estimate the age with the date of first encounter and the birth year. 
@@ -81,7 +87,9 @@ overall_population_age <- overall_population_clean %>%
                                                                      ifelse( age >= 65, "65+ over", "other")))) )))
 ```
 
-## Categorization for: Race & Marital status & Sex & language
+## Recode for: Race & Marital status & Sex & language
+In this step we recode the variables and we also filter out the patients with "other" for gender, due to the low values (<10), for privacy reasons. 
+
 ```{r}
 overall_population_categorized <- overall_population_age %>%
   dplyr::mutate( race = ifelse( RACE_CD == "DEM|RACE:01", "American Indian Alaskan Native",   
@@ -104,7 +112,16 @@ overall_population_categorized <- overall_population_age %>%
   dplyr::filter(sex != "other")  %>%
   dplyr::mutate( language = ifelse( LANGUAGE_CD == "ENG",  "English", 
                                 ifelse( LANGUAGE_CD == "SPA", "Spanish", "other")))
+```
 
+We create an extrac column that contains both, the ethnicity (hispanic: yes/no and the race)
+```{r}
+overall_population_categorized <- overall_population_categorized %>%
+  dplyr::mutate( eth_race = paste0( ifelse( hispanic == "YES", "hispanic", ifelse(hispanic== "NO", "Non-Hispanic", "Other")), " ", race ))
+```
+
+We check again for missing values and we save the recoded and clean data to create table 1. 
+```{r}
 #remove potential NAs
 overall_population_categorized <- na.omit(overall_population_categorized)
 #save the table as backup
@@ -113,8 +130,8 @@ save( overall_population_categorized, file = "/home/rstudio-user/studies/Researc
 
 # Create a first version of table 1
 ```{r}
-column_order <- mappings::mapping(c("pre-pandemic", "post_pandemic"))
-table1(~ age_group + sex + race + language + CURRENT_FPL_CD + hispanic + HOMELESS_CD + maritalstatus + 
+column_order <- mappings::mapping(c("pre-pandemic", "post-pandemic"))
+table1(~ age_group + sex + hispanic + race + eth_race + language + CURRENT_FPL_CD + HOMELESS_CD + maritalstatus + 
          RURAL_CD | column_order(pandemic_period), 
        data = overall_population_categorized, caption = "Table 1. Housing instability before and after pandemic (with overall")
 ```
@@ -140,8 +157,10 @@ pvalue <- function(x, ...) {
   c("", sub("<", "&lt;", format.pval(p, digits=3, eps=0.001)))
 }
 
-table1(~ age_group + sex + race + language + CURRENT_FPL_CD + hispanic + HOMELESS_CD + maritalstatus + 
+table1_output <- table1(~ age_group + sex + hispanic + race + eth_race + language + CURRENT_FPL_CD  + HOMELESS_CD + maritalstatus + 
          RURAL_CD | column_order(pandemic_period), 
        data = overall_population_categorized,  overall=F, extra.col=list(`P-value`=pvalue), caption = "Table 1. Housing instability before and after pandemic (with p-value")
+
+write.table(table1_output, file= "outputs/table1.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
 ```
 
