@@ -36,7 +36,7 @@ postPandemic_population <- read.delim("reviewSQLoutputs/f1_post_pandemic_populat
 This file contains the first date that a patient had housing insecurity in the study period. 
 This will be used to estimate the age of the patients. 
 ```{r}
-encounters <- read.delim("reviewSQLoutputs/f1_first_encounter_date.txt", header = TRUE, sep = ",")
+encounters <- read.delim("reviewSQLoutputs/f1_first_encounter_date_rownum21816.txt", header = TRUE, sep = ",")
 colnames(encounters)[1] <- "PATIENT_NUM"
 ```
 
@@ -54,8 +54,11 @@ print(paste0("We are excluding ", length(common), " patients at this step on the
 # finally, with the lef_join we add the encounter numbers with the dates
 overall_population <- overall_population %>%
   dplyr::filter( ! PATIENT_NUM %in% common ) %>%
-  dplyr::mutate( pandemic_period = ifelse(PATIENT_NUM %in% prePandemic_population$PATIENT_NUM, "pre-pandemic", "post-pandemic")) %>%
-  dplyr::left_join( encounters, by = "PATIENT_NUM")
+  #dplyr::mutate( pandemic_period = ifelse(PATIENT_NUM %in% prePandemic_population$PATIENT_NUM, "pre-pandemic", "post-pandemic")) %>%
+  dplyr::left_join( encounters, by = "PATIENT_NUM") %>%
+  dplyr::mutate( year = as.numeric(sapply(strsplit( as.character(firstDate), "[-]"), '[', 1)),
+    pandemic_period = ifelse(year < 2020, "pre-pandemic", "post-pandemic")) %>%
+  
 
 print(paste0("We have a total of ", length(unique(overall_population$PATIENT_NUM)), " patients at this step on the analysis"))
 ```
@@ -164,3 +167,15 @@ table1_output <- table1(~ age_group + sex + hispanic + race + eth_race + languag
 write.table(table1_output, file= "outputs/table1.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
 ```
 
+## Create table 1 by year
+We add a column with the year that each patient was described to have housing insecurity. 
+```{r}
+overall_population_categorized <- overall_population_categorized %>%
+  dplyr::mutate( year = sapply(strsplit( as.character(firstDate), "[-]"), '[', 1))
+
+byYearTable <- table1(~ age_group + sex + hispanic + race + eth_race + language + CURRENT_FPL_CD  + HOMELESS_CD + maritalstatus + 
+         RURAL_CD | year, 
+       data = overall_population_categorized,  overall=F, extra.col=list(`P-value`=pvalue), caption = "Housing insecurity by year")
+
+byYearTable
+```

@@ -1,0 +1,15 @@
+---
+title: "Housing Instability in all patients: table 2"
+output: html_document
+---
+
+# Load the required R libraries
+```{r}
+.libPaths(c('/home/rstudio-user/studies/lib/', .libPaths()))
+#install.packages("mappings", lib = "/home/rstudio-user/studies/lib/")
+library(table1)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(mappings)
+```
