@@ -45,6 +45,7 @@ checks_1type <- checks %>%
 
 sdh_encounters_filtered <- sdh_encounters %>%
   dplyr::filter( patient_num %in% checks_1type$patient_num ) %>%
+  dplyr::filter( ! PAYOR_TYPE_RESEARCH %in% c("NI")) %>%
   dplyr::mutate( date = sapply(strsplit( as.character(start_date), " "), '[', 1)) %>%
   dplyr::group_by( patient_num, PAYOR_TYPE_RESEARCH ) %>%
   dplyr::summarise( min_date = min(as.Date(date, format = "%Y-%m-%d")))
@@ -129,7 +130,9 @@ allPopTable <- table1(~ age_group + sex + hispanic + race + eth_race + language 
          rural_cd | PAYOR_TYPE_RESEARCH, 
        data = all_patients_info_categorized, caption = "Table X. Patients with housing insecurity: description by payor type")
 
-write.table(allPopTable, file= "outputs/allPopTable.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
+allPopTable
+
+write.table(allPopTable, file= "outputs/allPopTableByPayorType.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
 
 ```
 
