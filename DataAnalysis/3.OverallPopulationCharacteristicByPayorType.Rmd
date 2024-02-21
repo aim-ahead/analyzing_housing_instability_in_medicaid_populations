@@ -24,8 +24,10 @@ The inclusion criteria has been:
 - older than 18 years old
 - time period: 2016 to 2022
 ```{r}
-sdh_encounters <- read.delim("reviewSQLoutputs/f1_all_payors_housingInstability_encounter_rownum414458.txt", header = TRUE, sep = ",")
-sdh_demographics <- read.delim("reviewSQLoutputs/f1_all_payors_housingInstability_demographics_rownum122212.txt", header = TRUE, sep = ",")
+#sdh_encounters <- read.delim("reviewSQLoutputs/f1_all_payors_housingInstability_encounter_rownum414458.txt", header = TRUE, sep = ",")
+#sdh_demographics <- read.delim("reviewSQLoutputs/f1_all_payors_housingInstability_demographics_rownum122212.txt", header = TRUE, sep = ",")
+sdh_encounters <- read.delim("reviewSQLoutputs/f1_all_payors_housingInstability_encounter_screened_rownum44660.txt", header = TRUE, sep = ",")
+sdh_demographics <- read.delim("reviewSQLoutputs/f1_all_payors_housingInstability_demographics_screened_rownum31288.txt", header = TRUE, sep = ",")
 ```
 
 # Check how many type of payers each patient had
@@ -121,7 +123,7 @@ We check again for missing values and we save the recoded and clean data to crea
 #remove potential NAs
 all_patients_info_categorized <- na.omit(all_patients_info_categorized)
 #save the table as backup
-save( all_patients_info_categorized, file = "/home/rstudio-user/studies/Research-Fellowship-jovita-murillo/all_patients_info_categorized.RData")
+save( all_patients_info_categorized, file = "/home/rstudio-user/studies/Research-Fellowship-jovita-murillo/all_patients_info_categorized_screened.RData")
 ```
 
 # Create a first version of table 1
@@ -132,7 +134,6 @@ allPopTable <- table1(~ age_group + sex + hispanic + race + eth_race + language 
 
 allPopTable
 
-write.table(allPopTable, file= "outputs/allPopTableByPayorType.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
+write.table(allPopTable, file= "outputs/allPopTableByPayorType_screened.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
 
 ```
-

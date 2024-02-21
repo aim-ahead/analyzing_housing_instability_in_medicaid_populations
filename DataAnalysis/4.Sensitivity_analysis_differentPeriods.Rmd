@@ -1,5 +1,5 @@
 ---
-title: "Housing Instability in Medicaid patients: table 1"
+title: "Sensitivity analysis: how the results would look like if the periods are different?"
 output: html_document
 ---
 
@@ -16,51 +16,58 @@ library(mappings)
 
 # Read the files extracted from the db
 These files are exports from the tables:
-- f1_overall_population_rownum21816
-- f1_pre_pandemic_population_rownum11100
-- f1_post_pandemic_population_rownum11558
-(See details on file dataExtraction_SQLqueries_table1_medicaid_sdh.sql)
+- f1_all_payors_housingInstability_demographics_rownum122212.txt
+- f1_all_payors_housingInstability_encounter_rownum414458.txt
 
 The inclusion criteria has been:
 - patients that experienced housing insecurity (SDH concepts)
 - older than 18 years old
-- in medicaid
 - time period: 2016 to 2022
 ```{r}
-overall_population <- read.delim("reviewSQLoutputs/f1_overall_population_rownum21816.txt", header = TRUE, sep = ",")
-prePandemic_population <- read.delim("reviewSQLoutputs/f1_pre_pandemic_population_rownum11100.txt", header = TRUE, sep = ",")
-postPandemic_population <- read.delim("reviewSQLoutputs/f1_post_pandemic_population_rownum11558.txt", header = TRUE, sep = ",")
+all_pop_demographic <- read.delim("reviewSQLoutputs/f1_all_payors_housingInstability_demographics_screened_rownum31288.txt", header = TRUE, sep = ",")
+all_pop_encounters <- read.delim("reviewSQLoutputs/f1_all_payors_housingInstability_encounter_screened_rownum44660.txt", header = TRUE, sep = ",")
 ```
 
-# Read the file with the encounter dates
-This file contains the first date that a patient had housing insecurity in the study period. 
-This will be used to estimate the age of the patients. 
+# Identify Medicaid ones
 ```{r}
-encounters <- read.delim("reviewSQLoutputs/f1_first_encounter_date_rownum21816.txt", header = TRUE, sep = ",")
-colnames(encounters)[1] <- "PATIENT_NUM"
+medicaid_encounters <- all_pop_encounters %>%
+  dplyr::filter( PAYOR_TYPE_RESEARCH == "Medicaid") %>%
+  dplyr::mutate( year = as.numeric(sapply(strsplit( as.character(start_date), "[-]"), "[", 1))) %>%
+  dplyr::filter( year %in% c(2018, 2019, 2020, 2021))
+
+medicaid_encounters %>% group_by( year ) %>% summarise( pat = n_distinct( patient_num ))
 ```
 
-# Exclude the patients that are in both periods
+# Define Periods
+- Pre-pandemic as 2018-2019
+- Post pandemic as 2020-2021
 We identify common patients in both periods and filter them out of the dataset. 
+```{r}
+prePandemic_population <- medicaid_encounters %>%
+  dplyr::filter( year %in% c(2016, 2017, 2018, 2019) )
 
+postPandemic_population <- medicaid_encounters %>%
+  dplyr::filter( year %in% c(2020, 2021) )
+```
+
+Identify and remove patients that are in both periods, pre and post pandemic 
 ```{r}
 # first we identify which are the patients in both periods
-common <- prePandemic_population[ prePandemic_population$PATIENT_NUM %in% postPandemic_population$PATIENT_NUM,  "PATIENT_NUM"]
+common <- prePandemic_population[ prePandemic_population$patient_num %in% postPandemic_population$patient_num,  "patient_num"]
 
-print(paste0("We are excluding ", length(common), " patients at this step on the analysis"))
+print(paste0("We are excluding ", length(unique(common)), " patients at this step on the analysis"))
 
 # then we remove them from the overall population using the filter
 # we create a new column with the flag, pre or post pandemic for each patient
 # finally, with the lef_join we add the encounter numbers with the dates
-overall_population <- overall_population %>%
+overall_population <- all_pop_demographic %>%
   dplyr::filter( ! PATIENT_NUM %in% common ) %>%
-  #dplyr::mutate( pandemic_period = ifelse(PATIENT_NUM %in% prePandemic_population$PATIENT_NUM, "pre-pandemic", "post-pandemic")) %>%
-  dplyr::left_join( encounters, by = "PATIENT_NUM") %>%
-  dplyr::mutate( year = as.numeric(sapply(strsplit( as.character(firstDate), "[-]"), '[', 1)),
-    pandemic_period = ifelse(year < 2020, "pre-pandemic", "post-pandemic")) %>%
+  dplyr::filter( PATIENT_NUM %in% prePandemic_population$patient_num | PATIENT_NUM %in% postPandemic_population$patient_num) %>%
+  dplyr::mutate( pandemic_period = ifelse(PATIENT_NUM %in% prePandemic_population$patient_num, "pre-pandemic", "post-pandemic")) 
   
 
 print(paste0("We have a total of ", length(unique(overall_population$PATIENT_NUM)), " patients at this step on the analysis"))
+summary(as.factor(overall_population$pandemic_period))
 ```
 
 # Identify the patients with missing information and exlcude them. 
@@ -72,6 +79,24 @@ overall_population_clean <- overall_population[ complete.cases( overall_populati
 print(paste0("We have a total of ", length(unique(overall_population_clean$PATIENT_NUM)), " patients at this step on the analysis"))
 ```
 
+# Add first_encounter date
+```{r}
+postPandemic_population <- postPandemic_population %>%
+  dplyr::filter( ! patient_num %in% common) %>%
+  dplyr::mutate( date = sapply(strsplit( as.character(start_date), " "), '[', 1)) %>%
+  dplyr::group_by( patient_num ) %>%
+  dplyr::summarise( encounter_date = min( date ))
+
+prePandemic_population <- prePandemic_population %>%
+  dplyr::filter( ! patient_num %in% common) %>%
+  dplyr::mutate( date = sapply(strsplit( as.character(start_date), " "), '[', 1)) %>%
+  dplyr::group_by( patient_num ) %>%
+  dplyr::summarise( encounter_date = min( date ))
+
+firstEncounter <- rbind( prePandemic_population, postPandemic_population)
+```
+
+
 # Recode different columns into meaningful categories
 
 ## Age groups
@@ -79,8 +104,8 @@ First we estimate the age with the date of first encounter and the birth year.
 Then we categorize the age in 5 different groups. 
 ```{r}
 overall_population_age <- overall_population_clean %>%
-  dplyr::mutate( birth_year = as.Date(sapply(strsplit( as.character(BIRTH_DATE), " "), "[", 1), format = "%Y-%m-%d"), 
-                 encounter_date = as.Date(sapply(strsplit( as.character(firstDate), " "), "[", 1), format = "%Y-%m-%d" )) %>%
+  dplyr::left_join( firstEncounter, by=c("PATIENT_NUM"="patient_num")) %>%
+  dplyr::mutate( birth_year = as.Date(sapply(strsplit( as.character(BIRTH_DATE), " "), "[", 1), format = "%Y-%m-%d")) %>%
   dplyr::mutate( age = round(floor( as.numeric(as.Date(encounter_date, format = "%Y-%m-%d")) - as.numeric(as.Date(birth_year, format = "%Y-%m-%d")))/365.25)) %>%
   dplyr::mutate( age_group = ifelse( age >= 18 & age < 25, "18-24", 
                                      ifelse( age >= 25 & age < 35, "25-34", 
@@ -128,7 +153,7 @@ We check again for missing values and we save the recoded and clean data to crea
 #remove potential NAs
 overall_population_categorized <- na.omit(overall_population_categorized)
 #save the table as backup
-save( overall_population_categorized, file = "/home/rstudio-user/studies/Research-Fellowship-jovita-murillo/overall_population_categorized.RData")
+save( overall_population_categorized, file = "/home/rstudio-user/studies/Research-Fellowship-jovita-murillo/overall_population_categorized_sensitivity.RData")
 ```
 
 # Create a first version of table 1
@@ -138,7 +163,7 @@ t1_withOverall <- table1(~ age_group + sex + hispanic + race + eth_race + langua
          RURAL_CD | column_order(pandemic_period), 
        data = overall_population_categorized, caption = "Table 1. Housing instability before and after pandemic (with overall")
 
-write.table(t1_withOverall, file= "outputs/t1_withOverall_from2016to2021.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
+write.table(t1_withOverall, file= "outputs/t1_withOverall_from2018to2021.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
 ```
 
 ## Create a second version of the table adding the p-value
@@ -166,22 +191,4 @@ table1_output <- table1(~ age_group + sex + hispanic + race + eth_race + languag
          RURAL_CD | column_order(pandemic_period), 
        data = overall_population_categorized,  overall=F, extra.col=list(`P-value`=pvalue), caption = "Table 1. Housing instability before and after pandemic (with p-value")
 
-write.table(table1_output, file= "outputs/t1_withPvalues_from2016to2021.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
-```
-
-## Create table 1 by year
-We add a column with the year that each patient was described to have housing insecurity. 
-```{r}
-overall_population_categorized <- overall_population_categorized %>%
-  dplyr::mutate( year = sapply(strsplit( as.character(firstDate), "[-]"), '[', 1))
-
-byYearTable <- table1(~ age_group + sex + hispanic + race + eth_race + language + CURRENT_FPL_CD  + HOMELESS_CD + maritalstatus + 
-         RURAL_CD | year, 
-       data = overall_population_categorized,  overall=F, extra.col=list(`P-value`=pvalue), caption = "Housing insecurity by year")
-
-byYearTable
-
-write.table(byYearTable, file= "outputs/byYearTable.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
-
-```
-
+write.table(table1_output, file= "outputs/t1_withPvalues_periodfrom2018to2021.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
