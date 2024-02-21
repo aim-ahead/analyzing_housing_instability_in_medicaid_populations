@@ -134,9 +134,11 @@ save( overall_population_categorized, file = "/home/rstudio-user/studies/Researc
 # Create a first version of table 1
 ```{r}
 column_order <- mappings::mapping(c("pre-pandemic", "post-pandemic"))
-table1(~ age_group + sex + hispanic + race + eth_race + language + CURRENT_FPL_CD + HOMELESS_CD + maritalstatus + 
+t1_withOverall <- table1(~ age_group + sex + hispanic + race + eth_race + language + CURRENT_FPL_CD + HOMELESS_CD + maritalstatus + 
          RURAL_CD | column_order(pandemic_period), 
        data = overall_population_categorized, caption = "Table 1. Housing instability before and after pandemic (with overall")
+
+write.table(t1_withOverall, file= "outputs/t1_withOverall.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
 ```
 
 ## Create a second version of the table adding the p-value
@@ -164,7 +166,7 @@ table1_output <- table1(~ age_group + sex + hispanic + race + eth_race + languag
          RURAL_CD | column_order(pandemic_period), 
        data = overall_population_categorized,  overall=F, extra.col=list(`P-value`=pvalue), caption = "Table 1. Housing instability before and after pandemic (with p-value")
 
-write.table(table1_output, file= "outputs/table1.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
+write.table(table1_output, file= "outputs/t1_withPvalues.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
 ```
 
 ## Create table 1 by year
@@ -178,4 +180,8 @@ byYearTable <- table1(~ age_group + sex + hispanic + race + eth_race + language 
        data = overall_population_categorized,  overall=F, extra.col=list(`P-value`=pvalue), caption = "Housing insecurity by year")
 
 byYearTable
+
+write.table(byYearTable, file= "outputs/byYearTable.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
+
 ```
+
