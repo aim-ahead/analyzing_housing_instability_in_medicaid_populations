@@ -48,7 +48,8 @@ rm(sdh_info, zcodes_info)
 
 # extract the year from the start date
 all_info <- all_info %>%
-  dplyr::mutate(year =as.numeric(sapply(strsplit( as.character(start_date), "[-]"), '[', 1)))
+  dplyr::mutate(year =as.numeric(sapply(strsplit( as.character(start_date), "[-]"), '[', 1))) %>%
+  dplyr::filter( PAYOR_TYPE_RESEARCH != "NI")
 ```
 
 # Estimate total number of patients per year and payor type
@@ -76,6 +77,10 @@ by_source_counts <- all_info %>%
 
 # Visualizations of percentage of patients per payor type
 ```{r}
+png(filename = "outputs/patientsByPayorType.png",
+    width    = 800, 
+    height   = 600 )
+
 ggplot(overall_counts, aes(fill=PAYOR_TYPE_RESEARCH, y=perc, x=as.factor(year))) + 
   ggplot2::geom_bar(position="stack", stat="identity") +
   viridis::scale_fill_viridis(discrete = T) +
@@ -87,10 +92,15 @@ ggplot(overall_counts, aes(fill=PAYOR_TYPE_RESEARCH, y=perc, x=as.factor(year)))
   ggplot2::theme(panel.grid.major.x = element_blank(), 
                  axis.text.x = element_text(vjust = 1,hjust=1), 
                  plot.title = element_text(hjust = 0.5))
+dev.off()
 ```
 
 # Visualizations of % of social insecurity by source of knowledge in Medicaid population
 ```{r}
+png(filename = "outputs/sourceOfKnowledge.png",
+    width    = 800, 
+    height   = 600 )
+
 by_source_counts %>% 
   dplyr::filter( PAYOR_TYPE_RESEARCH == "Medicaid") %>%
   ggplot2::ggplot( aes(fill=source, y=perc, x=as.factor(year))) + 
@@ -104,6 +114,8 @@ by_source_counts %>%
   ggplot2::theme(panel.grid.major.x = element_blank(), 
                  axis.text.x = element_text(vjust = 1,hjust=1), 
                  plot.title = element_text(hjust = 0.5))
+
+dev.off()
 ```
 
 # Percentage of housing instability over time for medicaid population
@@ -118,6 +130,10 @@ perc_over_total_medicaid_pop <- overall_counts %>%
   dplyr::select( year, pat_count ) %>%
   dplyr::left_join( totalPatientsPerYearAndPayor) %>%
   dplyr::mutate( perc = round(pat_count/total_count*100, 2))
+
+png(filename = "outputs/housingInstability_perc_perYear_medicaid.png",
+    width    = 800, 
+    height   = 600 )
   
 ggplot2::ggplot(data = perc_over_total_medicaid_pop,  aes( y=perc, x=as.factor(year))) + 
   ggplot2::geom_bar(fill = "#90c6d6", stat = "identity") +
@@ -128,4 +144,7 @@ ggplot2::ggplot(data = perc_over_total_medicaid_pop,  aes( y=perc, x=as.factor(y
   ggplot2::theme(panel.grid.major.x = element_blank(), 
                  axis.text.x = element_text(vjust = 1,hjust=1), 
                  plot.title = element_text(hjust = 0.5))
+
+dev.off()
+
 ```
