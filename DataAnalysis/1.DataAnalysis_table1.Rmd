@@ -12,6 +12,7 @@ library(dplyr)
 library(lubridate)
 library(ggplot2)
 library(mappings)
+library(officer)
 ```
 
 # Read the files extracted from the db
@@ -147,8 +148,8 @@ doc <- read_docx()
 
 # Add content to the document
 doc <- doc %>%
-  body_add_par("Table 1. Housing instability before and after pandemic (with overall") %>%
-  body_add_table(  t1_withOverall )
+  officer::body_add_par("Table 1. Housing instability before and after pandemic (with overall") %>%
+  officer::body_add_table(  as.data.frame( t1_withOverall ) )
 
 # Save the document
 print(doc, target = "outputs/t1_withOverall_from2016to2021.docx")
@@ -190,8 +191,8 @@ doc <- read_docx()
 
 # Add content to the document
 doc <- doc %>%
-  body_add_par("Table 1. Housing instability before and after pandemic (with p-value)") %>%
-  body_add_table(  table1_output )
+  officer::body_add_par("Table 1. Housing instability before and after pandemic (with p-value)") %>%
+  officer::body_add_table(  as.data.frame( table1_output ) )
 
 # Save the document
 print(doc, target = "outputs/t1_withPvalues_from2016to2021.docx")
@@ -219,8 +220,8 @@ doc <- read_docx()
 
 # Add content to the document
 doc <- doc %>%
-  body_add_par("Housing insecurity by year") %>%
-  body_add_table(  byYearTable )
+  officer::body_add_par("Housing insecurity by year") %>%
+  officer::body_add_table(  as.data.frame( byYearTable ) )
 
 # Save the document
 print(doc, target = "outputs/byYearTable.docx")
