@@ -1,0 +1,213 @@
+---
+title: "Housing Instability in Medicaid patients: table 1 with ICD Z codes (Medicaid)"
+output: html_document
+---
+
+# Load the required R libraries
+```{r}
+.libPaths(c('/home/rstudio-user/studies/lib/', .libPaths()))
+#install.packages("mappings", lib = "/home/rstudio-user/studies/lib/")
+library(table1)
+library(dplyr)
+library(lubridate)
+library(ggplot2)
+library(mappings)
+library(officer)
+```
+
+# Read the files extracted from the db
+These files are exports from the tables:
+- f1_overall_population_rownum21816
+- f1_pre_pandemic_population_rownum11100
+- f1_post_pandemic_population_rownum11558
+(See details on file dataExtraction_SQLqueries_table1_medicaid_sdh.sql)
+
+The inclusion criteria has been:
+- patients that experienced housing insecurity (Z codes concepts)
+- older than 18 years old
+- in medicaid
+- time period: 2016 to 2022
+```{r}
+zcodes_encounters <- read.delim("reviewSQLoutputs/f1_all_payors_housingInstability_Zcodes_encounter_rownum4914.txt", header = TRUE, sep = ",")
+zcodes_demographics <- read.delim("reviewSQLoutputs/f1_all_payors_housingInstability_Zcodes_demographics_rownum4725.txt", header = TRUE, sep = ",")
+```
+
+# Filter by Medicaid and pre-pandemic vs. post-pandemic
+
+```{r}
+zcodes_encounters <- zcodes_encounters %>%
+  dplyr::filter( PAYOR_TYPE_RESEARCH == "Medicaid") %>%
+  dplyr::mutate( date = sapply(strsplit( as.character(start_date), " "), '[', 1), 
+                 year = sapply(strsplit( as.character(start_date), "[-]"), '[', 1))
+
+prePandemic_population <- zcodes_encounters %>%
+  dplyr::filter( year %in% c("2016", "2017", "2018", "2019")) %>%
+  dplyr::mutate( period = "pre-pandemic")
+
+
+postPandemic_population <- zcodes_encounters %>%
+  dplyr::filter( year %in% c("2020", "2021")) %>%
+  dplyr::mutate( period = "post-pandemic")
+```
+
+# Exclude the patients that are in both periods
+We identify common patients in both periods and filter them out of the dataset. 
+
+```{r}
+# first we identify which are the patients in both periods
+common <- prePandemic_population[ prePandemic_population$patient_num %in% postPandemic_population$patient_num,  "patient_num"]
+
+print(paste0("We are excluding ", length(common), " patients at this step on the analysis"))
+
+# then we remove them from the overall population using the filter
+# we create a new column with the flag, pre or post pandemic for each patient
+# finally, with the lef_join we add the encounter numbers with the dates
+overall_population <- rbind( prePandemic_population, postPandemic_population )
+overall_population <- overall_population %>%
+  dplyr::filter( ! patient_num %in% common ) %>%
+  dplyr::left_join( zcodes_demographics, by = c("patient_num"="PATIENT_NUM"))
+  
+
+print(paste0("We have a total of ", length(unique(overall_population$patient_num)), " patients at this step on the analysis"))
+```
+
+# Identify the patients with missing information and exlcude them. 
+Create a clean dataset excluding rows with missing values
+```{r}
+# Create a clean dataset excluding rows with missing values
+overall_population_clean <- overall_population[ complete.cases( overall_population), ]
+
+print(paste0("We have a total of ", length(unique(overall_population_clean$patient_num)), " patients at this step on the analysis"))
+```
+
+# Recode different columns into meaningful categories
+
+## Age groups
+First we estimate the age with the date of first encounter and the birth year. 
+Then we categorize the age in 5 different groups. 
+```{r}
+overall_population_age <- overall_population_clean %>%
+  dplyr::mutate( birth_year = as.Date(sapply(strsplit( as.character(BIRTH_DATE), " "), "[", 1), format = "%Y-%m-%d"), 
+                 encounter_date = as.Date(sapply(strsplit( as.character(date), " "), "[", 1), format = "%Y-%m-%d" )) %>%
+  dplyr::mutate( age = round(floor( as.numeric(as.Date(encounter_date, format = "%Y-%m-%d")) - as.numeric(as.Date(birth_year, format = "%Y-%m-%d")))/365.25)) %>%
+  dplyr::mutate( age_group = ifelse( age >= 18 & age < 25, "18-24", 
+                                     ifelse( age >= 25 & age < 35, "25-34", 
+                                             ifelse( age >= 35 & age < 45, "35-44", 
+                                                     ifelse( age >= 45 & age < 65, "45-64", 
+                                                             ifelse( age >= 45 & age < 65, "45-64", 
+                                                                     ifelse( age >= 65, "65+ over", "other")))) )))
+```
+
+## Recode for: Race & Marital status & Sex & language
+In this step we recode the variables and we also filter out the patients with "other" for gender, due to the low values (<10), for privacy reasons. 
+
+```{r}
+overall_population_categorized <- overall_population_age %>%
+  dplyr::mutate( race = ifelse( RACE_CD == "DEM|RACE:01", "American Indian Alaskan Native",   
+          ifelse( RACE_CD == "DEM|RACE:02", "Asian",
+            ifelse( RACE_CD == "DEM|RACE:03", "Black African American",
+              ifelse( RACE_CD == "DEM|RACE:04", "Native Hawaiian or Other Pacific Islander",
+                  ifelse( RACE_CD == "DEM|RACE:05", "White",
+                    ifelse( RACE_CD == "DEM|RACE:06", "MultipleRace", "other"))))))) %>%
+  dplyr::mutate( hispanic = ifelse( HISPANIC_CD == "DEM|HISPANIC:Y", "YES",   
+                                    ifelse( HISPANIC_CD == "DEM|HISPANIC:N", "NO", "other"))) %>%
+  dplyr::mutate(maritalstatus = ifelse(MARITAL_STATUS_CD == "DEM|MARITAL:Single", "Single", 
+      ifelse(MARITAL_STATUS_CD == "DEM|MARITAL:Married", "Married",
+        ifelse(MARITAL_STATUS_CD == "DEM|MARITAL:Significant Other", "Significant Other",
+          ifelse(MARITAL_STATUS_CD == "DEM|MARITAL:Domestic Partner", "Significant Other",
+              ifelse(MARITAL_STATUS_CD == "DEM|MARITAL:Divorced", "Divorced",
+                 ifelse(MARITAL_STATUS_CD == "DEM|MARITAL:Separated", "Separated", 
+                    ifelse(MARITAL_STATUS_CD == "DEM|MARITAL:Widowed", "Widowed", "other")))))))) %>%
+  dplyr::mutate(sex = ifelse(SEX_CD == "DEM|SEX:F", "Female", 
+              ifelse(SEX_CD == "DEM|SEX:M", "Male", "other"))) %>%
+  dplyr::filter(sex != "other")  %>%
+  dplyr::mutate( language = ifelse( LANGUAGE_CD == "ENG",  "English", 
+                                ifelse( LANGUAGE_CD == "SPA", "Spanish", "other")))
+```
+
+We create an extrac column that contains both, the ethnicity (hispanic: yes/no and the race)
+```{r}
+overall_population_categorized <- overall_population_categorized %>%
+  dplyr::mutate( eth_race = paste0( ifelse( hispanic == "YES", "hispanic", ifelse(hispanic== "NO", "Non-Hispanic", "Other")), " ", race ))
+```
+
+We check again for missing values and we save the recoded and clean data to create table 1. 
+```{r}
+#remove potential NAs
+overall_population_categorized <- na.omit(overall_population_categorized)
+#save the table as backup
+save( overall_population_categorized, file = "/home/rstudio-user/studies/Research-Fellowship-jovita-murillo/overall_population_categorized_zcodes.RData")
+```
+
+# Create a first version of table 1
+```{r}
+column_order <- mappings::mapping(c("pre-pandemic", "post-pandemic"))
+t1_withOverall <- table1(~ age_group + sex + hispanic + race + eth_race + language + CURRENT_FPL_CD + HOMELESS_CD + maritalstatus + 
+         RURAL_CD | column_order(period), 
+       data = overall_population_categorized, caption = "Table 1. Housing instability before and after pandemic (with overall")
+
+write.table(t1_withOverall, file= "outputs/t1_Zcodes_withOverall_from2016to2021.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
+```
+
+### Save table as word document
+```{r}
+doc <- read_docx()
+
+# Add content to the document
+doc <- doc %>%
+  officer::body_add_par("Table 1. Housing instability before and after pandemic using Z59 codes (with overall") %>%
+  officer::body_add_table(  as.data.frame( t1_withOverall ) )
+
+# Save the document
+print(doc, target = "outputs/t1_Zcodes_withOverall_from2016to2021.docx")
+```
+
+
+
+## Create a second version of the table adding the p-value
+```{r}
+# add p-value to the table
+pvalue <- function(x, ...) {
+  # Construct vectors of data y, and groups (strata) g
+  y <- unlist(x)
+  g <- factor(rep(1:length(x), times=sapply(x, length)))
+  if (is.numeric(y)) {
+    # For numeric variables, perform a standard 2-sample t-test
+    p <- t.test(y ~ g)$p.value
+  } else {
+    # For categorical variables, perform a chi-squared test of independence
+    p <- chisq.test(table(y, g))$p.value
+  }
+  # Format the p-value, using an HTML entity for the less-than sign.
+  # The initial empty string places the output on the line below the variable label.
+  
+  
+  c("", sub("<", "&lt;", format.pval(p, digits=3, eps=0.001)))
+}
+
+table1_output <- table1(~ age_group + sex + hispanic + race + eth_race + language + CURRENT_FPL_CD  + HOMELESS_CD + maritalstatus + 
+         RURAL_CD | column_order(period), 
+       data = overall_population_categorized,  overall=F, extra.col=list(`P-value`=pvalue), caption = "Table 1. Housing instability before and after pandemic (with p-value")
+
+write.table(table1_output, file= "outputs/t1_Zcodes_withPvalues_from2016to2021.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
+```
+
+### Save table as word document
+```{r}
+doc <- read_docx()
+
+# Add content to the document
+doc <- doc %>%
+  officer::body_add_par("Table 1. Housing instability before and after pandemic using Z codes (with p-value)") %>%
+  officer::body_add_table(  as.data.frame( table1_output ) )
+
+# Save the document
+print(doc, target = "outputs/t1_Zcodes_withPvalues_from2016to2021.docx")
+```
+
+## By year and Z code subtypes
+We add a column with the year that each patient was described to have housing insecurity. 
+And split by Z codes
+```{r}
+overall_population_categorized <- overall_population_categorized %>%
+  d
