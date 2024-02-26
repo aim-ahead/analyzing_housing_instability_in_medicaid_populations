@@ -12,6 +12,7 @@ library(dplyr)
 library(lubridate)
 library(ggplot2)
 library(mappings)
+library(officer)
 ```
 
 # Read the files extracted from the db
@@ -166,6 +167,20 @@ t1_withOverall <- table1(~ age_group + sex + hispanic + race + eth_race + langua
 write.table(t1_withOverall, file= "outputs/t1_withOverall_from2018to2021.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
 ```
 
+
+### Save table as word document
+```{r}
+doc <- read_docx()
+
+# Add content to the document
+doc <- doc %>%
+  officer::body_add_par("Table 1. Housing instability before and after pandemic (with overall") %>%
+  officer::body_add_table(  as.data.frame( t1_withOverall ) )
+
+# Save the document
+print(doc, target = "outputs/t1_withOverall_from2018to2021.docx")
+```
+
 ## Create a second version of the table adding the p-value
 ```{r}
 # add p-value to the table
@@ -192,3 +207,18 @@ table1_output <- table1(~ age_group + sex + hispanic + race + eth_race + languag
        data = overall_population_categorized,  overall=F, extra.col=list(`P-value`=pvalue), caption = "Table 1. Housing instability before and after pandemic (with p-value")
 
 write.table(table1_output, file= "outputs/t1_withPvalues_periodfrom2018to2021.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
+```
+
+### Save table as word document
+```{r}
+doc <- read_docx()
+
+# Add content to the document
+doc <- doc %>%
+  officer::body_add_par("Table 1. Housing instability before and after pandemic (with p-value)") %>%
+  officer::body_add_table(  as.data.frame( table1_output ) )
+
+# Save the document
+print(doc, target = "outputs/t1_withPvalues_from2018to2021.docx")
+```
+
