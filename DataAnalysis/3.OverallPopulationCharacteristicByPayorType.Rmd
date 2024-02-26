@@ -12,6 +12,7 @@ library(dplyr)
 library(lubridate)
 library(ggplot2)
 library(mappings)
+library(officer)
 ```
 
 # Read the files extracted from the db
@@ -136,4 +137,17 @@ allPopTable
 
 write.table(allPopTable, file= "outputs/allPopTableByPayorType_screened.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
 
+```
+
+### Save table as word document
+```{r}
+doc <- read_docx()
+
+# Add content to the document
+doc <- doc %>%
+  officer::body_add_par("Table X. Patients with housing insecurity: description by payor type") %>%
+  officer::body_add_table(  as.data.frame( allPopTable ) )
+
+# Save the document
+print(doc, target = "outputs/allPopTableByPayorType_screened.docx")
 ```
