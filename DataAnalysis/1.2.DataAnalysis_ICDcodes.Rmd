@@ -208,6 +208,17 @@ print(doc, target = "outputs/t1_Zcodes_withPvalues_from2016to2021.docx")
 ## By year and Z code subtypes
 We add a column with the year that each patient was described to have housing insecurity. 
 And split by Z codes
-```{r}
-overall_population_categorized <- overall_population_categorized %>%
-  d
+```{r, eval=FALSE}
+icdByYearAndSubType <- overall_population_categorized %>%
+  dplyr::mutate(zcode = gsub("ICD10CM:", "", concept_cd)) %>%
+  dplyr::select( patient_num, zcode, year ) %>%
+  unique()
+
+counts <- icdByYearAndSubType %>%
+  dplyr::group_by( year, zcode ) %>%
+  dplyr::summarise( n_patients = n_distinct( patient_num ) ) %>%
+  tidyr::pivot_wider( names_from = year, 
+                      values_from =  n_patients,
+                      values_fill = 0)
+```
+
