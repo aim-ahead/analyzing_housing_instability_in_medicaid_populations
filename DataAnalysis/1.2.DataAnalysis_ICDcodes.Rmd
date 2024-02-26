@@ -222,3 +222,27 @@ counts <- icdByYearAndSubType %>%
                       values_fill = 0)
 ```
 
+### Group by categories
+```{r}
+codesClassification <- as.data.frame( matrix( ncol = 2, nrow = 10))
+colnames(codesClassification) <- c("group", "zcode")
+codesClassification$zcode <- c("Z59.0", "Z59.1", "Z59.2","Z59.3", "Z59.4", "Z59.5","Z59.6", "Z59.7","Z59.8","Z59.9")
+codesClassification$group <- c("Housing", "Housing", "Housing", "Housing", "Food Insecurity", "Food Insecurity","Extreme Poverty", "Low Income","Housing", "Housing")
+
+icdByYearAndSubType <- icdByYearAndSubType %>%
+  dplyr::left_join( codesClassification)
+
+countsByYearAndGroup <- icdByYearAndSubType %>%
+  dplyr::group_by( year, group ) %>%
+  dplyr::summarise( n_patients = n_distinct( patient_num ) ) %>%
+  tidyr::pivot_wider( names_from = year, 
+                      values_from =  n_patients,
+                      values_fill = 0)
+
+counts_Overall <- icdByYearAndSubType %>%
+  dplyr::group_by( year ) %>%
+  dplyr::summarise( n_patients = n_distinct( patient_num ) ) %>%
+  tidyr::pivot_wider( names_from = year, 
+                      values_from =  n_patients,
+                      values_fill = 0)
+```
