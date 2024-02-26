@@ -141,6 +141,21 @@ t1_withOverall <- table1(~ age_group + sex + hispanic + race + eth_race + langua
 write.table(t1_withOverall, file= "outputs/t1_withOverall_from2016to2021.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
 ```
 
+### Save table as word document
+```{r}
+doc <- read_docx()
+
+# Add content to the document
+doc <- doc %>%
+  body_add_par("Table 1. Housing instability before and after pandemic (with overall") %>%
+  body_add_table(  t1_withOverall )
+
+# Save the document
+print(doc, target = "outputs/t1_withOverall_from2016to2021.docx")
+```
+
+
+
 ## Create a second version of the table adding the p-value
 ```{r}
 # add p-value to the table
@@ -169,6 +184,19 @@ table1_output <- table1(~ age_group + sex + hispanic + race + eth_race + languag
 write.table(table1_output, file= "outputs/t1_withPvalues_from2016to2021.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
 ```
 
+### Save table as word document
+```{r}
+doc <- read_docx()
+
+# Add content to the document
+doc <- doc %>%
+  body_add_par("Table 1. Housing instability before and after pandemic (with p-value)") %>%
+  body_add_table(  table1_output )
+
+# Save the document
+print(doc, target = "outputs/t1_withPvalues_from2016to2021.docx")
+```
+
 ## Create table 1 by year
 We add a column with the year that each patient was described to have housing insecurity. 
 ```{r}
@@ -183,5 +211,18 @@ byYearTable
 
 write.table(byYearTable, file= "outputs/byYearTable.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
 
+```
+
+### Save table as word document
+```{r}
+doc <- read_docx()
+
+# Add content to the document
+doc <- doc %>%
+  body_add_par("Housing insecurity by year") %>%
+  body_add_table(  byYearTable )
+
+# Save the document
+print(doc, target = "outputs/byYearTable.docx")
 ```
 
