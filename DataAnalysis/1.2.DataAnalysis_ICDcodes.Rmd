@@ -32,13 +32,21 @@ zcodes_encounters <- read.delim("reviewSQLoutputs/f1_all_payors_housingInstabili
 zcodes_demographics <- read.delim("reviewSQLoutputs/f1_all_payors_housingInstability_Zcodes_demographics_rownum4725.txt", header = TRUE, sep = ",")
 ```
 
+# Decide if all Z59 should or should not be included
+```{r}
+allZ59 = FALSE 
+```
+
+
 # Filter by Medicaid and pre-pandemic vs. post-pandemic
 
 ```{r}
 zcodes_encounters <- zcodes_encounters %>%
   dplyr::filter( PAYOR_TYPE_RESEARCH == "Medicaid") %>%
   dplyr::mutate( date = sapply(strsplit( as.character(start_date), " "), '[', 1), 
-                 year = sapply(strsplit( as.character(start_date), "[-]"), '[', 1))
+                 year = sapply(strsplit( as.character(start_date), "[-]"), '[', 1)) %>%
+  dplyr::group_by(patient_num ) %>%
+  dplyr::mutate( first_date = min(date))
 
 prePandemic_population <- zcodes_encounters %>%
   dplyr::filter( year %in% c("2016", "2017", "2018", "2019")) %>%
@@ -62,7 +70,20 @@ print(paste0("We are excluding ", length(common), " patients at this step on the
 # then we remove them from the overall population using the filter
 # we create a new column with the flag, pre or post pandemic for each patient
 # finally, with the lef_join we add the encounter numbers with the dates
-overall_population <- rbind( prePandemic_population, postPandemic_population )
+if( allZ59 == TRUE){
+  overall_population <- rbind( prePandemic_population, postPandemic_population ) %>%
+  dplyr::select( patient_num, PAYOR_TYPE_RESEARCH, year, first_date, period, concept_cd ) %>%
+  unique()
+}else{
+  overall_population <- rbind( prePandemic_population, postPandemic_population ) %>%
+  dplyr::filter( concept_cd %in% c("ICD10CM:Z59.0", "ICD10CM:Z59.1", "ICD10CM:Z59.2", 
+                                   "ICD10CM:Z59.3", "ICD10CM:Z59.8","ICD10CM:Z59.9")) %>%
+  dplyr::select( patient_num, PAYOR_TYPE_RESEARCH, year, first_date, period ) %>%
+  unique()
+}
+
+
+
 overall_population <- overall_population %>%
   dplyr::filter( ! patient_num %in% common ) %>%
   dplyr::left_join( zcodes_demographics, by = c("patient_num"="PATIENT_NUM"))
@@ -88,7 +109,7 @@ Then we categorize the age in 5 different groups.
 ```{r}
 overall_population_age <- overall_population_clean %>%
   dplyr::mutate( birth_year = as.Date(sapply(strsplit( as.character(BIRTH_DATE), " "), "[", 1), format = "%Y-%m-%d"), 
-                 encounter_date = as.Date(sapply(strsplit( as.character(date), " "), "[", 1), format = "%Y-%m-%d" )) %>%
+                 encounter_date = as.Date(sapply(strsplit( as.character(first_date), " "), "[", 1), format = "%Y-%m-%d" )) %>%
   dplyr::mutate( age = round(floor( as.numeric(as.Date(encounter_date, format = "%Y-%m-%d")) - as.numeric(as.Date(birth_year, format = "%Y-%m-%d")))/365.25)) %>%
   dplyr::mutate( age_group = ifelse( age >= 18 & age < 25, "18-24", 
                                      ifelse( age >= 25 & age < 35, "25-34", 
@@ -146,7 +167,9 @@ t1_withOverall <- table1(~ age_group + sex + hispanic + race + eth_race + langua
          RURAL_CD | column_order(period), 
        data = overall_population_categorized, caption = "Table 1. Housing instability before and after pandemic (with overall")
 
-write.table(t1_withOverall, file= "outputs/t1_Zcodes_withOverall_from2016to2021.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
+
+write.table(t1_withOverall, file= "outputs/t1_Zcodes_withOverall_from2016to2021.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)  
+write.table(t1_withOverall, file= "outputs/t1_Zcodes_housing_withOverall_from2016to2021.txt", col.names = TRUE, row.names = TRUE, sep = "\t", quote = FALSE)
 ```
 
 ### Save table as word document
@@ -159,7 +182,11 @@ doc <- doc %>%
   officer::body_add_table(  as.data.frame( t1_withOverall ) )
 
 # Save the document
-print(doc, target = "outputs/t1_Zcodes_withOverall_from2016to2021.docx")
+if( allZ59 == TRUE ){
+  print(doc, target = "outputs/t1_Zcodes_withOverall_from2016to2021.docx")
+}else{
+    print(doc, target = "outputs/t1_Zcodes_housing_withOverall_from2016to2021.docx")
+}
 ```
 
 
@@ -202,14 +229,19 @@ doc <- doc %>%
   officer::body_add_table(  as.data.frame( table1_output ) )
 
 # Save the document
-print(doc, target = "outputs/t1_Zcodes_withPvalues_from2016to2021.docx")
+if( allZ59 == TRUE ){
+  print(doc, target = "outputs/t1_Zcodes_withPvalues_from2016to2021.docx")
+}else{
+  print(doc, target = "outputs/t1_Zcodes_housing_withPvalues_from2016to2021.docx")
+}
 ```
 
 ## By year and Z code subtypes
 We add a column with the year that each patient was described to have housing insecurity. 
 And split by Z codes
-```{r, eval=FALSE}
-icdByYearAndSubType <- overall_population_categorized %>%
+```{r}
+if( allZ59 == TRUE){
+  icdByYearAndSubType <- overall_population_categorized %>%
   dplyr::mutate(zcode = gsub("ICD10CM:", "", concept_cd)) %>%
   dplyr::select( patient_num, zcode, year ) %>%
   unique()
@@ -220,29 +252,33 @@ counts <- icdByYearAndSubType %>%
   tidyr::pivot_wider( names_from = year, 
                       values_from =  n_patients,
                       values_fill = 0)
+}
 ```
 
 ### Group by categories
 ```{r}
-codesClassification <- as.data.frame( matrix( ncol = 2, nrow = 10))
-colnames(codesClassification) <- c("group", "zcode")
-codesClassification$zcode <- c("Z59.0", "Z59.1", "Z59.2","Z59.3", "Z59.4", "Z59.5","Z59.6", "Z59.7","Z59.8","Z59.9")
-codesClassification$group <- c("Housing", "Housing", "Housing", "Housing", "Food Insecurity", "Food Insecurity","Extreme Poverty", "Low Income","Housing", "Housing")
-
-icdByYearAndSubType <- icdByYearAndSubType %>%
-  dplyr::left_join( codesClassification)
-
-countsByYearAndGroup <- icdByYearAndSubType %>%
-  dplyr::group_by( year, group ) %>%
-  dplyr::summarise( n_patients = n_distinct( patient_num ) ) %>%
-  tidyr::pivot_wider( names_from = year, 
-                      values_from =  n_patients,
-                      values_fill = 0)
-
-counts_Overall <- icdByYearAndSubType %>%
-  dplyr::group_by( year ) %>%
-  dplyr::summarise( n_patients = n_distinct( patient_num ) ) %>%
-  tidyr::pivot_wider( names_from = year, 
-                      values_from =  n_patients,
-                      values_fill = 0)
+if( allZ59 == TRUE){
+  codesClassification <- as.data.frame( matrix( ncol = 2, nrow = 10))
+  colnames(codesClassification) <- c("group", "zcode")
+  codesClassification$zcode <- c("Z59.0", "Z59.1", "Z59.2","Z59.3", "Z59.4", "Z59.5","Z59.6", "Z59.7","Z59.8","Z59.9")
+  codesClassification$group <- c("Housing", "Housing", "Housing", "Housing", "Food Insecurity", "Food Insecurity","Extreme Poverty", "Low Income","Housing", "Housing")
+  
+  icdByYearAndSubType <- icdByYearAndSubType %>%
+    dplyr::left_join( codesClassification)
+  
+  countsByYearAndGroup <- icdByYearAndSubType %>%
+    dplyr::group_by( year, group ) %>%
+    dplyr::summarise( n_patients = n_distinct( patient_num ) ) %>%
+    tidyr::pivot_wider( names_from = year, 
+                        values_from =  n_patients,
+                        values_fill = 0)
+  
+  counts_Overall <- icdByYearAndSubType %>%
+    dplyr::group_by( year ) %>%
+    dplyr::summarise( n_patients = n_distinct( patient_num ) ) %>%
+    tidyr::pivot_wider( names_from = year, 
+                        values_from =  n_patients,
+                        values_fill = 0)
+}
 ```
+
