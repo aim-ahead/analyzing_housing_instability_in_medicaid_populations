@@ -67,7 +67,12 @@ colnames( sdh_demographics_filtered ) <- tolower( colnames( sdh_demographics_fil
 all_patients_info <- sdh_demographics_filtered %>%
   dplyr::left_join( sdh_encounters_filtered, by="patient_num")
 ```
-
+# Add mapping from zip code to state
+```{r}
+load("outputs/zipCodeWithStateMap.RData")
+all_patients_info <- all_patients_info %>%
+  dplyr::left_join( xx, by=c("zip_cd"= "ZIP_CD"))
+```
 
 # Recode different columns into meaningful categories
 
