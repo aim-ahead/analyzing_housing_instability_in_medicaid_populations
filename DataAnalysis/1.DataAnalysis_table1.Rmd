@@ -123,6 +123,12 @@ We create an extrac column that contains both, the ethnicity (hispanic: yes/no a
 overall_population_categorized <- overall_population_categorized %>%
   dplyr::mutate( eth_race = paste0( ifelse( hispanic == "YES", "hispanic", ifelse(hispanic== "NO", "Non-Hispanic", "Other")), " ", race ))
 ```
+# Add mapping from zip code to state
+```{r}
+load("outputs/zipCodeWithStateMap.RData")
+overall_population_categorized <- overall_population_categorized %>%
+  dplyr::left_join( xx, by="ZIP_CD")
+```
 
 We check again for missing values and we save the recoded and clean data to create table 1. 
 ```{r}
