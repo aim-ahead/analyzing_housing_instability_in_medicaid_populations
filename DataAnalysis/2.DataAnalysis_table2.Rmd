@@ -82,7 +82,7 @@ png(filename = "outputs/patientsByPayorType.png",
     height   = 600 )
 
 ggplot(overall_counts, aes(fill=PAYOR_TYPE_RESEARCH, y=perc, x=as.factor(year))) + 
-  ggplot2::geom_bar(position="stack", stat="identity") +
+  ggplot2::geom_bar(position="dodge", stat="identity") +
   viridis::scale_fill_viridis(discrete = T) +
   ggplot2::ggtitle("Percentage of patients with housing insecurity \n (by payor type and year)") +
   xlab("") +
@@ -104,7 +104,7 @@ png(filename = "outputs/sourceOfKnowledge.png",
 by_source_counts %>% 
   dplyr::filter( PAYOR_TYPE_RESEARCH == "Medicaid") %>%
   ggplot2::ggplot( aes(fill=source, y=perc, x=as.factor(year))) + 
-  ggplot2::geom_bar(position="stack", stat="identity") +
+  ggplot2::geom_bar(position="dodge", stat="identity") +
   ggplot2::scale_fill_brewer(palette = "Pastel1")+
   ggplot2::ggtitle("Source of knowledge for social insecurity") +
   xlab("") +
