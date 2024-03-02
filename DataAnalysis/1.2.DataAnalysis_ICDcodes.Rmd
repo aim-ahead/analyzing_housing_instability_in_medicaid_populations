@@ -282,3 +282,39 @@ if( allZ59 == TRUE){
 }
 ```
 
+# Using as denominator the total number of adult patients per year and payor
+```{r}
+total_patients <- read.delim("reviewSQLoutputs/f1_dbpatients_per_year_and_payor.txt", sep = ",", colClass = "character") %>%
+  dplyr::filter( payor_type == "Medicaid") %>%
+  dplyr::select( -payor_type, pat_count, year=per_year )
+
+countsByYearAndGroup_with_perc <- icdByYearAndSubType %>%
+  dplyr::group_by( year, group ) %>%
+  dplyr::summarise( n_patients = n_distinct( patient_num )) %>%
+  dplyr::ungroup() %>%
+  dplyr::left_join( total_patients, by="year") %>%
+  dplyr::mutate( perc = round( n_patients / as.numeric(pat_count)*100, 4))  %>%
+  dplyr::select( year, group, perc  ) %>%
+  unique() %>%
+  tidyr::pivot_wider( names_from = year, 
+                        values_from =  perc,
+                        values_fill = 0) %>%
+  dplyr::mutate( mean = rowMeans(.[,-1]),
+                 change = `2021`- `2016`)
+    
+counts_Overall_with_perc <- icdByYearAndSubType %>%
+  dplyr::group_by( year ) %>%
+  dplyr::summarise( n_patients = n_distinct( patient_num ) ) %>%
+  dplyr::ungroup() %>%
+  dplyr::left_join( total_patients, by="year") %>%
+  dplyr::mutate( perc = round( n_patients / as.numeric(pat_count)*100, 4))  %>%
+  dplyr::select( year, perc  ) %>%
+  unique() %>% 
+  tidyr::pivot_wider( names_from = year, 
+                        values_from =  perc,
+                        values_fill = 0) %>%
+  dplyr::mutate( mean = rowMeans(.[,-1]),
+                 change = `2021`- `2016`)
+}
+```
+
